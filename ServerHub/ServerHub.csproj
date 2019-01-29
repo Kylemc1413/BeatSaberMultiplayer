@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Version>0.5.4.1</Version>
-    <AssemblyVersion>0.5.4.1</AssemblyVersion>
-    <FileVersion>0.5.4.1</FileVersion>
+    <Version>0.6.0.0</Version>
+    <AssemblyVersion>0.6.0.0</AssemblyVersion>
+    <FileVersion>0.6.0.0</FileVersion>
     <TargetFrameworks>netcoreapp2.0</TargetFrameworks>
     <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
@@ -20,8 +20,11 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="IPAddressRange" Version="3.2.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
-    <PackageReference Include="Open.Nat" Version="2.1.0" />
+    <PackageReference Include="Lidgren.Network.Core2" Version="1.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
+    <PackageReference Include="ReadLine" Version="2.0.1" />
+    <PackageReference Include="Sentry" Version="1.1.2" />
+    <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Logs\**" />
@@ -37,11 +40,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Remove="Properties\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="Websocket-sharp\doc\.gitignore" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Websocket-sharp\doc\.gitignore" />
   </ItemGroup>
 </Project>

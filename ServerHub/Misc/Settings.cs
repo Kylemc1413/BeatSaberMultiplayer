@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using ServerHub.Data;
 
 namespace ServerHub.Misc {
     [JsonObject(MemberSerialization.OptIn)]
@@ -20,6 +23,8 @@ namespace ServerHub.Misc {
             private int _webSocketPort;
             private bool _showTickrateInTitle;
             private bool _allowEventMessages;
+            private bool _showTickEventExceptions;
+            private bool _sendCrashReports;
 
             private Action MarkDirty { get; }
 
@@ -166,6 +171,34 @@ namespace ServerHub.Misc {
                 }
             }
 
+            /// <summary>
+            /// Remember to Save after changing the value
+            /// </summary>
+            [JsonProperty]
+            public bool ShowTickEventExceptions
+            {
+                get => _showTickEventExceptions;
+                set
+                {
+                    _showTickEventExceptions = value;
+                    MarkDirty();
+                }
+            }
+
+            /// <summary>
+            /// Remember to Save after changing the value
+            /// </summary>
+            [JsonProperty]
+            public bool SendCrashReports
+            {
+                get => _sendCrashReports;
+                set
+                {
+                    _sendCrashReports = value;
+                    MarkDirty();
+                }
+            }
+
             public ServerSettings(Action markDirty) {
                 MarkDirty = markDirty;
                 _port = 3700;
@@ -178,6 +211,91 @@ namespace ServerHub.Misc {
                 _webSocketPort = 3701;
                 _showTickrateInTitle = true;
                 _allowEventMessages = true;
+                _showTickEventExceptions = false;
+                _sendCrashReports = true;
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        public class RadioSettings
+        {
+            private bool _enableRadio;
+            private float _nextSongPrepareTime;
+            private float _resultsShowTime;
+            private ObservableCollection<ChannelSettings> _radioChannels;
+
+            private Action MarkDirty { get; }
+
+            [JsonProperty]
+            public bool EnableRadio
+            {
+                get => _enableRadio;
+                set
+                {
+                    _enableRadio = value;
+                    MarkDirty();
+                }
+            }
+
+            [JsonProperty]
+            public float NextSongPrepareTime
+            {
+                get => _nextSongPrepareTime;
+                set
+                {
+                    _nextSongPrepareTime = value;
+                    MarkDirty();
+                }
+            }
+
+            [JsonProperty]
+            public float ResultsShowTime
+            {
+                get => _resultsShowTime;
+                set
+                {
+                    _resultsShowTime = value;
+                    MarkDirty();
+                }
+            }
+
+            [JsonProperty]
+            public ObservableCollection<ChannelSettings> RadioChannels
+            {
+                get
+                {
+                    return _radioChannels;
+                }
+                set
+                {
+                    _radioChannels = value;
+                    MarkDirty();
+                }
+            }
+
+            public RadioSettings(Action markDirty)
+            {
+                MarkDirty = markDirty;
+                _enableRadio = false;
+                _nextSongPrepareTime = 90f;
+                _resultsShowTime = 15f;
+                _radioChannels = new ObservableCollection<ChannelSettings>();
+                _radioChannels.CollectionChanged += (sender, e) => { MarkDirty(); };
+            }
+        }
+        
+        public class ChannelSettings
+        {
+            public string ChannelName;
+            public string ChannelIconUrl;
+            [JsonConverter(typeof(StringEnumConverter))]
+            public BeatmapDifficulty PreferredDifficulty;
+            
+            public ChannelSettings()
+            {
+                ChannelName = "Radio Channel";
+                ChannelIconUrl = "https://cdn.akaku.org/akaku-radio-icon.png";
+                PreferredDifficulty = BeatmapDifficulty.Expert;
             }
         }
 
@@ -326,20 +444,6 @@ namespace ServerHub.Misc {
                 }
             }
 
-            /// <summary>
-            /// Remember to Save after changing the value
-            /// </summary>
-            [JsonProperty]
-            public List<string> SongIDs
-            {
-                get => _songIDs;
-                set
-                {
-                    _songIDs = value;
-                    MarkDirty();
-                }
-            }
-
             public TournamentModeSettings(Action markDirty)
             {
                 MarkDirty = markDirty;
@@ -347,12 +451,13 @@ namespace ServerHub.Misc {
                 _roomNameTemplate = "Tournament Room {0}";
                 _rooms = 4;
                 _password = "";
-                _songIDs = new List<string>();
             }
         }
 
         [JsonProperty]
         public ServerSettings Server { get; }
+        [JsonProperty]
+        public RadioSettings Radio { get; }
         [JsonProperty]
         public LoggerSettings Logger { get; }
         [JsonProperty]
@@ -375,7 +480,7 @@ namespace ServerHub.Misc {
                 catch (Exception ex) {
                     _instance = new Settings();
                     _instance.Save();
-                    Misc.Logger.Instance.Exception(ex.Message);
+                    Misc.Logger.Instance.Exception(ex);
                 }
 
                 return _instance;
@@ -384,8 +489,10 @@ namespace ServerHub.Misc {
 
         private bool IsDirty { get; set; }
 
-        Settings() {
+        Settings()
+        {
             Server = new ServerSettings(MarkDirty);
+            Radio = new RadioSettings(MarkDirty);
             Logger = new LoggerSettings(MarkDirty);
             Access = new AccessSettings(MarkDirty);
             TournamentMode = new TournamentModeSettings(MarkDirty);
@@ -393,7 +500,6 @@ namespace ServerHub.Misc {
         }
 
         public bool Save() {
-            if (!IsDirty) return false;
             try {
                 using (var f = new StreamWriter(FileLocation.FullName)) {
                     var json = JsonConvert.SerializeObject(this, Formatting.Indented);
@@ -403,7 +509,22 @@ namespace ServerHub.Misc {
                 MarkClean();
                 return true;
             }
-            catch (IOException) {
+            catch {
+                return false;
+            }
+        }
+
+        public bool Load(string json)
+        {
+            try
+            {
+                JsonConvert.PopulateObject(json, this);
+                MarkDirty();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Misc.Logger.Instance.Exception("Unable to load settings! Exception: "+e);
                 return false;
             }
         }

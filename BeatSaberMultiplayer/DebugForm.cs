@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using UnityEngine.SceneManagement;
 using System.Timers;
+using Lidgren.Network;
 
 namespace BeatSaberMultiplayer
 {
@@ -16,7 +17,7 @@ namespace BeatSaberMultiplayer
     static class DebugForm
     {
         static Form debugForm;
-        static private Label roomStateLabel;
+        static private Label tickRateLabel;
         static private Label playersLabel;
         static private ListBox playersListBox;
         static private Label visiblePlayersLabel;
@@ -38,7 +39,7 @@ namespace BeatSaberMultiplayer
 
             debugForm = new Form();
 
-            roomStateLabel = new Label();
+            tickRateLabel = new Label();
             playersLabel = new Label();
             playersListBox = new ListBox();
             visiblePlayersLabel = new Label();
@@ -46,12 +47,12 @@ namespace BeatSaberMultiplayer
             // 
             // packetsLabel
             // 
-            roomStateLabel.AutoSize = true;
-            roomStateLabel.Location = new Point(10, 9);
-            roomStateLabel.Name = "roomStateLabel";
-            roomStateLabel.Size = new Size(102, 13);
-            roomStateLabel.TabIndex = 0;
-            roomStateLabel.Text = "Room state: Unknown";
+            tickRateLabel.AutoSize = true;
+            tickRateLabel.Location = new Point(10, 9);
+            tickRateLabel.Name = "tickRateLabel";
+            tickRateLabel.Size = new Size(102, 13);
+            tickRateLabel.TabIndex = 0;
+            tickRateLabel.Text = "Tickrate: Unknown";
             // 
             // playersLabel
             // 
@@ -87,7 +88,7 @@ namespace BeatSaberMultiplayer
             debugForm.Controls.Add(visiblePlayersLabel);
             debugForm.Controls.Add(playersListBox);
             debugForm.Controls.Add(playersLabel);
-            debugForm.Controls.Add(roomStateLabel);
+            debugForm.Controls.Add(tickRateLabel);
             debugForm.Name = "DebugForm";
             debugForm.Text = "DebugForm";
             debugForm.ResumeLayout(false);
@@ -123,7 +124,7 @@ namespace BeatSaberMultiplayer
         {
             try
             {
-                roomStateLabel.Text = "Room state: " + roomInfo.roomState.ToString();
+                tickRateLabel.Text = "Tickrate: " + Client.Instance.Tickrate.ToString();
                 playersLabel.Text = "Players: " + playersActive.ToString();
                 visiblePlayersLabel.Text = "Visible players: " + visiblePlayers.ToString();
 
@@ -141,20 +142,24 @@ namespace BeatSaberMultiplayer
 
         private static void Client_ClientCreated()
         {
-            Client.instance.PacketReceived += PacketReceived;
+            Client.Instance.MessageReceived += PacketReceived;
         }
 
-        private static void PacketReceived(BasePacket packet)
+        private static void PacketReceived(NetIncomingMessage msg)
         {
+            UpdateUI();
+            /*
             try
             {
-                if (packet.commandType == CommandType.UpdatePlayerInfo)
+                CommandType commandType = (CommandType)msg.ReadByte();
+
+                if (commandType == CommandType.UpdatePlayerInfo)
                 {
                     packetsReceived++;
 
-                    playersActive = BitConverter.ToInt32(packet.additionalData, 8);
+                    playersActive = msg.ReadInt32();
 
-                    Stream byteStream = new MemoryStream(packet.additionalData, 12, packet.additionalData.Length - 12);
+                    Stream byteStream = new MemoryStream(msg.additionalData, 12, msg.additionalData.Length - 12);
 
 
                     playersListBox.Items.Clear();
@@ -185,13 +190,13 @@ namespace BeatSaberMultiplayer
 
                     UpdateUI();
                 }
-                else if (packet.commandType == CommandType.GetRoomInfo)
+                else if (commandType == CommandType.GetRoomInfo)
                 {
-                    if (packet.additionalData[0] == 1)
+                    if (msg.additionalData[0] == 1)
                     {
-                        int songsCount = BitConverter.ToInt32(packet.additionalData, 1);
+                        int songsCount = BitConverter.ToInt32(msg.additionalData, 1);
 
-                        Stream byteStream = new MemoryStream(packet.additionalData, 5, packet.additionalData.Length - 5);
+                        Stream byteStream = new MemoryStream(msg.additionalData, 5, msg.additionalData.Length - 5);
 
                         for (int j = 0; j < songsCount; j++)
                         {
@@ -216,13 +221,13 @@ namespace BeatSaberMultiplayer
                     }
                     else
                     {
-                        if (BitConverter.ToInt32(packet.additionalData, 1) == packet.additionalData.Length - 5)
+                        if (BitConverter.ToInt32(msg.additionalData, 1) == msg.additionalData.Length - 5)
                         {
-                            roomInfo = new RoomInfo(packet.additionalData.Skip(5).ToArray());
+                            roomInfo = new RoomInfo(msg.additionalData.Skip(5).ToArray());
                         }
                         else
                         {
-                            roomInfo = new RoomInfo(packet.additionalData.Skip(1).ToArray());
+                            roomInfo = new RoomInfo(msg.additionalData.Skip(1).ToArray());
                         }
                     }
                 }
@@ -231,6 +236,7 @@ namespace BeatSaberMultiplayer
             {
 
             }
+            */
         }
     }
 

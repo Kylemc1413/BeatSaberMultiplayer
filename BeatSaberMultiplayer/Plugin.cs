@@ -1,12 +1,9 @@
-﻿using BeatSaberMultiplayer.Data;
-using BeatSaberMultiplayer.Misc;
+﻿using BeatSaberMultiplayer.Misc;
 using BeatSaberMultiplayer.UI;
 using IllusionPlugin;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace BeatSaberMultiplayer
@@ -15,8 +12,8 @@ namespace BeatSaberMultiplayer
     {
         public string Name => "Beat Saber Multiplayer";
 
-        public string Version => "0.5.4.1";
-        public static uint pluginVersion = 541;
+        public string Version => "0.6.0.0";
+        public static uint pluginVersion = 600;
 
         public static Plugin instance;
 
@@ -26,6 +23,10 @@ namespace BeatSaberMultiplayer
 
         public void OnApplicationStart()
         {
+#if DEBUG
+            if (Environment.CommandLine.Contains("fpfc"))
+                QualitySettings.vSyncCount = 1;
+#endif
 
             if (File.Exists("MPLog.txt"))
                 File.Delete("MPLog.txt");
@@ -38,7 +39,7 @@ namespace BeatSaberMultiplayer
 
             SceneManager.activeSceneChanged += ActiveSceneChanged;
             if (Config.Load())
-                Logger.Info("Loaded config!");
+                Misc.Logger.Info("Loaded config!");
             else
                 Config.Create();
             try
@@ -47,16 +48,18 @@ namespace BeatSaberMultiplayer
             }
             catch (Exception e)
             {
-                Logger.Warning("Unable to load presets! Exception: "+e);
+                Misc.Logger.Warning("Unable to load presets! Exception: "+e);
             }
-            Base64Sprites.ConvertSprites();
+            Sprites.ConvertSprites();
+
+            ScrappedData.Instance.DownloadScrappedData(null);
             
         }
 
         private void ActiveSceneChanged(Scene from, Scene to)
         {
 #if DEBUG
-           Logger.Info($"Active scene changed from \"{from.name}\" to \"{to.name}\"");
+           Misc.Logger.Info($"Active scene changed from \"{from.name}\" to \"{to.name}\"");
 #endif
             if (from.name == "EmptyTransition" && to.name == "Menu")
             {

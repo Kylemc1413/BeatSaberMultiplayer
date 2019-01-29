@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.ComponentModel;
+using Lidgren.Network;
 
 namespace ServerHub.Rooms
 {
@@ -24,7 +26,7 @@ namespace ServerHub.Rooms
             room.StartRoom();
             WebSocketListener.AddRoom(room);
 #if DEBUG
-            Logger.Instance.Log($"New room created! Host={host.playerName}({host.playerId}) Settings: name={settings.Name}, password={settings.Password}, usePassword={settings.UsePassword}, maxPlayers={settings.MaxPlayers}, noFail={settings.NoFail}, songSelecionType={settings.SelectionType}, songsCount={settings.AvailableSongs.Count}");
+            Logger.Instance.Log($"New room created! Host={host.playerName}({host.playerId}) Settings: name={settings.Name}, password={settings.Password}, usePassword={settings.UsePassword}, maxPlayers={settings.MaxPlayers}, noFail={settings.NoFail}, songSelecionType={settings.SelectionType}");
 #endif
             return room.roomId;
         }
@@ -37,7 +39,7 @@ namespace ServerHub.Rooms
             room.StartRoom();
             WebSocketListener.AddRoom(room);
 #if DEBUG
-            Logger.Instance.Log($"New room created! Settings: name={settings.Name}, password={settings.Password}, usePassword={settings.UsePassword}, maxPlayers={settings.MaxPlayers}, noFail={settings.NoFail}, songSelecionType={settings.SelectionType}, songsCount={settings.AvailableSongs.Count}");
+            Logger.Instance.Log($"New room created! Settings: name={settings.Name}, password={settings.Password}, usePassword={settings.UsePassword}, maxPlayers={settings.MaxPlayers}, noFail={settings.NoFail}, songSelecionType={settings.SelectionType}");
 #endif
             return room.roomId;
         }
@@ -53,16 +55,15 @@ namespace ServerHub.Rooms
                 room.StopRoom();
                 WebSocketListener.DestroyRoom(room);
 
-                List<byte> buffer = new List<byte>();
-                byte[] reasonText;
                 if (string.IsNullOrEmpty(reason))
-                    reasonText = Encoding.UTF8.GetBytes("Room destroyed!");
-                else
-                    reasonText = Encoding.UTF8.GetBytes(reason);
-                buffer.AddRange(BitConverter.GetBytes(reasonText.Length));
-                buffer.AddRange(reasonText);
+                    reason = "Room destroyed!";
 
-                room.BroadcastPacket(new BasePacket(CommandType.Disconnect, buffer.ToArray()));
+                NetOutgoingMessage outMsg = HubListener.ListenerServer.CreateMessage();
+
+                outMsg.Write((byte)CommandType.Disconnect);
+                outMsg.Write(reason);
+
+                room.BroadcastPacket(outMsg, NetDeliveryMethod.ReliableOrdered);
                 rooms.Remove(room);
 
                 return true;
@@ -76,8 +77,11 @@ namespace ServerHub.Rooms
         public static bool ClientJoined(Client client, uint roomId, string password)
         {
 #if DEBUG
-            Logger.Instance.Log("Client joining room " + roomId);
+            Logger.Instance.Log($"Client joining room {roomId}");
 #endif
+
+            NetOutgoingMessage outMsg = HubListener.ListenerServer.CreateMessage();
+
             if (rooms.Any(x => x.roomId == roomId))
             {
                 BaseRoom room = rooms.First(x => x.roomId == roomId);
@@ -89,12 +93,17 @@ namespace ServerHub.Rooms
                     {
                         if (room.roomSettings.Password == password)
                         {
-                            client.SendData(new BasePacket(CommandType.JoinRoom, new byte[1] { (byte)JoinResult.Success }));
+                            outMsg.Write((byte)CommandType.JoinRoom);
+                            outMsg.Write((byte)JoinResult.Success);
+
+                            client.playerConnection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                            Program.networkBytesOutNow += outMsg.LengthBytes;
+
                             client.joinedRoomID = room.roomId;
                             if (room.roomClients.Any(x => x.playerInfo == client.playerInfo))
                             {
                                 Client loggedIn = room.roomClients.Find(x => x.playerInfo == client.playerInfo);
-                                if (loggedIn.socket.RemoteEndPoint != client.socket.RemoteEndPoint)
+                                if (loggedIn.playerConnection != client.playerConnection)
                                 {
                                     loggedIn.KickClient("You logged in from another location");
                                 }
@@ -108,28 +117,57 @@ namespace ServerHub.Rooms
                         }
                         else
                         {
-                            client.SendData(new BasePacket(CommandType.JoinRoom, new byte[1] { (byte)JoinResult.IncorrectPassword }));
+                            outMsg.Write((byte)CommandType.JoinRoom);
+                            outMsg.Write((byte)JoinResult.IncorrectPassword);
+
+                            client.playerConnection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                            Program.networkBytesOutNow += outMsg.LengthBytes;
                             return false;
                         }
 
                     }
                     else
                     {
-                        client.SendData(new BasePacket(CommandType.JoinRoom, new byte[1] { (byte)JoinResult.Success }));
+                        outMsg.Write((byte)CommandType.JoinRoom);
+                        outMsg.Write((byte)JoinResult.Success);
+
+                        client.playerConnection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                        Program.networkBytesOutNow += outMsg.LengthBytes;
+
                         client.joinedRoomID = room.roomId;
+                        if (room.roomClients.Any(x => x.playerInfo == client.playerInfo))
+                        {
+                            Client loggedIn = room.roomClients.Find(x => x.playerInfo.Equals(client.playerInfo));
+                            if (!loggedIn.playerConnection.Equals(client.playerConnection))
+                            {
+                                loggedIn.KickClient("You logged in from another location");
+                            }
+                            else
+                            {
+                                room.roomClients.Remove(loggedIn);
+                            }
+                        }
                         AddClient(room, client);
                         return true;
                     }
                 }
                 else
                 {
-                    client.SendData(new BasePacket(CommandType.JoinRoom, new byte[1] { (byte)JoinResult.TooMuchPlayers }));
+                    outMsg.Write((byte)CommandType.JoinRoom);
+                    outMsg.Write((byte)JoinResult.TooMuchPlayers);
+
+                    client.playerConnection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                    Program.networkBytesOutNow += outMsg.LengthBytes;
                     return false;
                 }
             }
             else
             {
-                client.SendData(new BasePacket(CommandType.JoinRoom, new byte[1] { (byte)JoinResult.RoomNotFound}));
+                outMsg.Write((byte)CommandType.JoinRoom);
+                outMsg.Write((byte)JoinResult.RoomNotFound);
+
+                client.playerConnection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                Program.networkBytesOutNow += outMsg.LengthBytes;
                 return false;
             }
         } 
@@ -144,12 +182,15 @@ namespace ServerHub.Rooms
 
         public static void ClientLeftRoom(Client client)
         {
-            BaseRoom room = rooms.Find(x => x.roomId == client.joinedRoomID);
-            if (room != null)
+            foreach (BaseRoom room in rooms)
             {
-                room.PlayerLeft(client);
+                if (room.roomClients.Contains(client))
+                {
+                    room.PlayerLeft(client);
+                    client.joinedRoomID = 0;
+                    return;
+                }
             }
-            client.joinedRoomID = 0;
         }
 
         public static int GetRoomsCount()
@@ -167,15 +208,11 @@ namespace ServerHub.Rooms
             return rooms;
         }
 
-        public static byte[] GetRoomsListInBytes()
+        public static void AddRoomListToMessage(NetOutgoingMessage msg)
         {
-            List<byte> buffer = new List<byte>();
+            msg.Write(rooms.Count);
 
-            buffer.AddRange(BitConverter.GetBytes(rooms.Count));
-
-            rooms.ForEach(x => buffer.AddRange(x.GetRoomInfo().ToBytes()));
-
-            return buffer.ToArray();
+            rooms.ForEach(x => x.GetRoomInfo().AddToMessage(msg));
         }
 
 

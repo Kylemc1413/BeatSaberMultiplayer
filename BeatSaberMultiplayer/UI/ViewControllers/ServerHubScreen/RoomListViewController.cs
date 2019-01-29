@@ -4,6 +4,7 @@ using BeatSaberMultiplayer.UI.FlowCoordinators;
 using CustomUI.BeatSaber;
 using HMUI;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,7 +18,7 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
     class RoomListViewController : VRUIViewController, TableView.IDataSource
     {
         public event Action createRoomButtonPressed;
-        public event Action<RoomInfo> selectedRoom;
+        public event Action<ServerHubRoom> selectedRoom;
 
         private Button _pageUpButton;
         private Button _pageDownButton;
@@ -26,7 +27,7 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
         TableView _serverTableView;
         LevelListTableCell _serverTableCellInstance;
 
-        List<RoomInfo> availableRooms = new List<RoomInfo>();
+        List<ServerHubRoom> availableRooms = new List<ServerHubRoom>();
 
         protected override void DidActivate(bool firstActivation, ActivationType type)
         {
@@ -38,6 +39,7 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
                 (_pageUpButton.transform as RectTransform).anchorMin = new Vector2(0.5f, 1f);
                 (_pageUpButton.transform as RectTransform).anchorMax = new Vector2(0.5f, 1f);
                 (_pageUpButton.transform as RectTransform).anchoredPosition = new Vector2(0f, -14f);
+                (_pageUpButton.transform as RectTransform).sizeDelta = new Vector2(40f, 10f);
                 _pageUpButton.interactable = true;
                 _pageUpButton.onClick.AddListener(delegate ()
                 {
@@ -50,6 +52,7 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
                 (_pageDownButton.transform as RectTransform).anchorMin = new Vector2(0.5f, 0f);
                 (_pageDownButton.transform as RectTransform).anchorMax = new Vector2(0.5f, 0f);
                 (_pageDownButton.transform as RectTransform).anchoredPosition = new Vector2(0f, 8f);
+                (_pageDownButton.transform as RectTransform).sizeDelta = new Vector2(40f, 10f);
                 _pageDownButton.interactable = true;
                 _pageDownButton.onClick.AddListener(delegate ()
                 {
@@ -61,7 +64,7 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
                 _createRoom = BeatSaberUI.CreateUIButton(rectTransform, "CreditsButton");
                 _createRoom.SetButtonText("Create room");
                 _createRoom.SetButtonTextSize(3f);
-                (_createRoom.transform as RectTransform).sizeDelta = new Vector2(38f, 8f);
+                (_createRoom.transform as RectTransform).sizeDelta = new Vector2(38f, 6f);
                 (_createRoom.transform as RectTransform).anchoredPosition = new Vector2(0f, 36f);
                 _createRoom.onClick.RemoveAllListeners();
                 _createRoom.onClick.AddListener(delegate ()
@@ -69,22 +72,25 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
                     createRoomButtonPressed?.Invoke();
                 });
 
-                _serverTableView = new GameObject().AddComponent<TableView>();
-                _serverTableView.transform.SetParent(rectTransform, false);
+                RectTransform container = new GameObject("Content", typeof(RectTransform)).transform as RectTransform;
+                container.SetParent(rectTransform, false);
+                container.anchorMin = new Vector2(0.3f, 0.5f);
+                container.anchorMax = new Vector2(0.7f, 0.5f);
+                container.sizeDelta = new Vector2(0f, 60f);
+                container.anchoredPosition = new Vector2(0f, -3f);
+
+                _serverTableView = new GameObject("CustomTableView").AddComponent<TableView>();
+                _serverTableView.gameObject.AddComponent<RectMask2D>();
+                _serverTableView.transform.SetParent(container, false);
 
                 _serverTableView.SetPrivateField("_isInitialized", false);
                 _serverTableView.SetPrivateField("_preallocatedCells", new TableView.CellsGroup[0]);
                 _serverTableView.Init();
 
-                RectMask2D viewportMask = Instantiate(Resources.FindObjectsOfTypeAll<RectMask2D>().First(), _serverTableView.transform, false);
-                viewportMask.transform.DetachChildren();
-                _serverTableView.GetComponentsInChildren<RectTransform>().First(x => x.name == "Content").transform.SetParent(viewportMask.rectTransform, false);
-
-                (_serverTableView.transform as RectTransform).anchorMin = new Vector2(0.3f, 0.5f);
-                (_serverTableView.transform as RectTransform).anchorMax = new Vector2(0.7f, 0.5f);
-                (_serverTableView.transform as RectTransform).sizeDelta = new Vector2(0f, 60f);
-                (_serverTableView.transform as RectTransform).position = new Vector3(0f, 0f, 2.4f);
-                (_serverTableView.transform as RectTransform).anchoredPosition = new Vector3(0f, -2.5f);
+                (_serverTableView.transform as RectTransform).anchorMin = new Vector2(0f, 0f);
+                (_serverTableView.transform as RectTransform).anchorMax = new Vector2(1f, 1f);
+                (_serverTableView.transform as RectTransform).sizeDelta = new Vector2(0f, 0f);
+                (_serverTableView.transform as RectTransform).anchoredPosition = new Vector3(0f, 0f);
 
                 ReflectionUtil.SetPrivateField(_serverTableView, "_pageUpButton", _pageUpButton);
                 ReflectionUtil.SetPrivateField(_serverTableView, "_pageDownButton", _pageDownButton);
@@ -100,15 +106,16 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
 
         }
 
-        public void SetRooms(List<ServerHubClient> serverHubs)
+        public void SetRooms(List<ServerHubRoom> rooms)
         {
-            if (serverHubs == null)
+            int prevCount = availableRooms.Count;
+            if (rooms == null)
             {
                 availableRooms.Clear();
             }
             else
             {
-                availableRooms = serverHubs.SelectMany(x => x.availableRooms).OrderByDescending(y => y.players).ToList();
+                availableRooms = rooms.OrderByDescending(y => y.roomInfo.players).ToList();
             }
 
             if (_serverTableView.dataSource != this)
@@ -117,8 +124,19 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
             }
             else
             {
-                _serverTableView.ReloadData();
+                _serverTableView.RefreshTable(false);
+                if (prevCount == 0 && availableRooms.Count > 0)
+                {
+                    StartCoroutine(ScrollWithDelay());
+                }
             }
+
+        }
+
+        IEnumerator ScrollWithDelay()
+        {
+            yield return null;
+            yield return null;
 
             _serverTableView.ScrollToRow(0, false);
         }
@@ -133,11 +151,11 @@ namespace BeatSaberMultiplayer.UI.ViewControllers
             LevelListTableCell cell = Instantiate(_serverTableCellInstance);
             cell.reuseIdentifier = "ServerTableCell";
 
-            RoomInfo room = availableRooms[row];
+            RoomInfo room = availableRooms[row].roomInfo;
             
             if (room.usePassword)
             {
-                cell.coverImage = Base64Sprites.lockedRoomIcon;
+                cell.coverImage = Sprites.lockedRoomIcon;
             }
             else
             {
